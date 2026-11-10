@@ -1,39 +1,68 @@
-# lyf 的第三次求助
+# RoboMaster 视觉作业：路线 A
 
-[中文](README.md) · [English](README.en.md)
+使用给定 ONNX 模型检测装甲板，按每个检测的图案选择物理尺寸，以 PnP 求四角点的相机坐标（米），逐帧输出 JSONL。全部颜色均参与检测，不训练模型。
 
-## 云台能动了，然后呢？
+## 环境
 
-在[控制组的作业](https://github.com/HKUAstar/control-training-template)中，
-lyf 把 yaw、pitch 云台教具交给了控制组。这次我们假设他们已经完成程序：
-云台可以回正、跟随目标角度，也能在调试时停止输出。
+实测 Python 3.13.9、macOS arm64、ONNX Runtime CPUExecutionProvider。以下命令均从仓库根目录执行，先确保 `python --version` 为 3.13.x：
 
-看到云台终于不再反复点头，lyf 松了一口气：“现在能不能让它自己盯着目标转？”
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r detection/requirements.txt
+```
 
-控制组也想试试。他们留出了目标角度接口，准备接上视觉系统。
-但视觉组还得回答两个问题：相机画面里的哪一块是装甲板？
-就算知道它现在在哪里，等弹丸飞过去，它又会转到哪里？
+Windows 激活命令为 `.venv\Scripts\activate`。
 
-这一次，你负责实现视觉链路中的一段。为了让你能在自己的电脑上独立完成，
-我们提供录像、模型、标定和瞄准仿真器。本次不需要真实教具、相机、电机或控制板，
-也不要求与控制组固件通信。故事中的联调只是背景，不是额外的硬件任务。
+## 运行
 
-## 两条路线，任选其一
+```bash
+python detection/run_detection.py \
+  --model detection/assets/0526.onnx \
+  --video detection/assets/small.mp4 \
+  --calibration detection/assets/calibration.yaml \
+  --output detection/outputs/small.jsonl
 
-**只需完成检测或瞄准中的一项，不要求两项都做。两条路线互不依赖。**
+python detection/run_detection.py \
+  --model detection/assets/0526.onnx \
+  --video detection/assets/large.mp4 \
+  --calibration detection/assets/calibration.yaml \
+  --output detection/outputs/large.jsonl
+```
 
-| 路线 | 你负责什么 | 已提供什么 | 从哪里开始 |
-| --- | --- | --- | --- |
-| 检测 | 从视频检测装甲板，用 PnP 恢复三维角点，导出 JSONL | 预训练模型、比赛片段、相机标定 | [detection/README.md](detection/README.md) |
-| 瞄准 | 根据延迟送达的目标状态预测装甲板位置，决定瞄准角和开火时机 | 精确的历史观测、弹道工具、3D 仿真、MCAP 回放 | [aiming/README.md](aiming/README.md) |
+默认置信度阈值 0.5、NMS IoU 阈值 0.5，类别无关 NMS 按 sigmoid(objectness) 排序；2 个 CPU 推理线程，预热 1 次。使用原始 float16 ONNX，letterbox 后推理，将角点恢复到原图再应用原始标定。PnP 使用 IPPE，选择四角点正深度且重投影 RMS 最低的有限候选。求解失败时保留二维检测，位姿相关字段同时为 null。
 
-检测路线语言不限，推荐 Python、C++ 或 Rust，不需要训练模型。
-瞄准路线使用 Rust，不需要实现检测器、跟踪器或状态估计。
-两者都允许使用参考资料和 AI 工具，但你需要能够解释自己的实现并定位问题。
+程序还会生成运行统计和抽样图片；这些辅助文件不纳入提交。
 
-## 开始与提交
+## 验证
 
-1. 打开[作业模板](https://github.com/HKUAstar/vision-training-assignment)，点击
-   **Use this template → Create a new repository**，在自己的账号下创建作业仓库。
-2. Clone 自己的仓库，选择检测或瞄准路线，按对应 README 完成作业。
-3. 将完成的代码 commit 并 push 到自己的仓库，然后提交该仓库的 **GitHub URL**。
+```bash
+python -m unittest discover -s detection/tests -v
+
+python detection/validate_results.py \
+  --results detection/outputs/small.jsonl \
+  --video detection/assets/small.mp4 \
+  --calibration detection/assets/calibration.yaml \
+  --expected-frames 360 \
+  --report detection/outputs/small.validation.json
+
+python detection/validate_results.py \
+  --results detection/outputs/large.jsonl \
+  --video detection/assets/large.mp4 \
+  --calibration detection/assets/calibration.yaml \
+  --expected-frames 360 \
+  --report detection/outputs/large.validation.json
+```
+
+9 项关键测试通过；独立验证器检查全部解码帧、严格 JSON、连续索引、时间戳、有限值、null 配对、物理尺寸、正深度及重算的重投影误差。
+
+| 视频 | JSONL 帧数 | 检测数 | 无检测帧数 | PnP 失败检测数 | RMS 中位数 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| small | 360 | 395 | 162 | 0 | 0.1182 px |
+| large | 360 | 150 | 260 | 0 | 0.3396 px |
+
+large 第 137 帧最大 RMS 为 11.09 px，装甲板在画面边缘截断。未设置额外的 RMS 拒绝阈值，保留原始观测及求解结果。没有人工真值，不将 PnP 成功率或重投影误差称为检测准确率或真实距离精度；平面多解和类别错误导致的尺寸误选仍可能影响深度。
+
+## 来源
+
+基于 [官方模板](https://github.com/HKUAstar/vision-training-assignment)，资源基线为 `c9fa5e9b66b61f5edcc23341ac7dac83a840bcc3`，模型、录像与标定保持原样。参考[指定模型实现](https://github.com/broalantaps/RobotDetectionModel/blob/babaebd6c8b3aeceda0ca924772b2d70d51801b4/OpenvinoInfer.cpp)及 [OpenCV PnP 文档](https://docs.opencv.org/4.x/d5/d1f/calib3d_solvePnP.html)。本题颜色映射、置信度及角点对应关系以[作业要求](https://training.herkules.dev/learn/vision-assignment)为准。使用 AI 辅助编写和排错。

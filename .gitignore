@@ -1,6 +1,12 @@
-target
+__pycache__/
+*.py[cod]
+.venv/
 .DS_Store
-*.mcap
 .env
 .env.*
-!.env.example
+*.partial
+detection/outputs/*
+!detection/outputs/small.jsonl
+!detection/outputs/large.jsonl
+!detection/outputs/small.validation.json
+!detection/outputs/large.validation.json
