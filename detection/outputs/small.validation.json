@@ -1,0 +1,20 @@
+{
+  "status": "passed",
+  "video_decoded_frames": 360,
+  "jsonl_lines": 360,
+  "last_frame_index": 359,
+  "last_timestamp_s": 11.966666666666667,
+  "detections": 395,
+  "pnp_failed_detections": 0,
+  "no_detection_frames": 162,
+  "checks": [
+    "strict_json_schema",
+    "frame_indices_and_timestamps",
+    "all_decoded_frames",
+    "finite_values",
+    "null_pairs",
+    "positive_depth",
+    "physical_pairwise_distances",
+    "recomputed_reprojection_rms"
+  ]
+}
