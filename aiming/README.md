@@ -1,10 +1,4 @@
-# 瞄准作业
-
-[中文](README.md) · [English](README.en.md)
-
-这是两条可选路线之一。**检测与瞄准任选其一即可，不要求同时完成。**
-阅读[主 README](../README.md)了解云台教具联调的故事背景。本路线使用仿真器，
-不需要先完成检测路线，也不需要真实云台、相机或电机。
+# 瞄准作业 贾涵宇 3036662505
 
 ## 任务
 
@@ -229,16 +223,3 @@ cargo run --locked -- --replay target/run.mcap --at 3.65 --preview target/previe
 cargo run --locked -- --replay target/run.mcap --export-video target/run.mp4
 ```
 
-默认目标半径为 0.25 m，装甲板中心高度为 0.3 m。
-碰撞检测以不超过 1 ms 的步长寻找穿过装甲板平面的区间，再用二分法细化。
-相切或同一区间内多次穿越可能被漏掉。
-本题在同一进程内执行学生代码，不是代码沙箱。装甲图案沿用视觉仿真器的素材。
-
-## 可选阅读
-
-- [平动-自旋耦合目标下的火控拦截时间t解析与数值混合寻优策略](https://bbs.herkules.dev/articles/01M0Z7CK2QE1GT8XY1GNQK53YA)：
-  介绍平移、自旋目标的解析与数值拦截时间求解，包括泰勒展开和牛顿迭代。
-- [弹道解算及云台角度求解算法](https://bbs.herkules.dev/articles/01M2N3NVQSC21BAGE585ZF8DY1)：
-  介绍带二次空气阻力的弹道与云台角度求解。
-
-这些是基础作业以外的扩展。仿真使用上面的仅重力抛物线，不需要更复杂的弹道模型。
