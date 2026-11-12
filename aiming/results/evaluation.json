@@ -1,0 +1,102 @@
+{
+  "controller": "observation age + launch delay + fixed-point flight time; fixed plate index",
+  "physics": "unmodified assignment simulator",
+  "scenarios": [
+    {
+      "config": {
+        "duration_s": 20.0,
+        "size": {
+          "mount_pitch_rad": 0.2617993877991494,
+          "plate_center_z_m": 0.3,
+          "plate_height_m": 0.056,
+          "plate_width_m": 0.135,
+          "radius_m": 0.25
+        },
+        "target": {
+          "omega_rad_s": 0.0,
+          "theta_rad": 0.0,
+          "vx_m_s": 0.0,
+          "vy_m_s": 0.0,
+          "x_m": 5.0,
+          "y_m": 0.0
+        }
+      },
+      "final_simulation_time_s": 22.02,
+      "hit_rate_resolved": 1.0,
+      "pending_shots": 0,
+      "resolved_shots": 80,
+      "scenario": "stationary",
+      "shots_per_simulation_second": 4.0,
+      "stats": {
+        "hits": 80,
+        "invalid_commands": 0,
+        "misses": 0,
+        "shots": 80
+      }
+    },
+    {
+      "config": {
+        "duration_s": 20.0,
+        "size": {
+          "mount_pitch_rad": 0.2617993877991494,
+          "plate_center_z_m": 0.3,
+          "plate_height_m": 0.056,
+          "plate_width_m": 0.135,
+          "radius_m": 0.25
+        },
+        "target": {
+          "omega_rad_s": 4.0,
+          "theta_rad": 0.0,
+          "vx_m_s": 0.0,
+          "vy_m_s": 0.0,
+          "x_m": 5.0,
+          "y_m": 0.0
+        }
+      },
+      "final_simulation_time_s": 22.02,
+      "hit_rate_resolved": 1.0,
+      "pending_shots": 0,
+      "resolved_shots": 80,
+      "scenario": "spinning",
+      "shots_per_simulation_second": 4.0,
+      "stats": {
+        "hits": 80,
+        "invalid_commands": 0,
+        "misses": 0,
+        "shots": 80
+      }
+    },
+    {
+      "config": {
+        "duration_s": 20.0,
+        "size": {
+          "mount_pitch_rad": 0.2617993877991494,
+          "plate_center_z_m": 0.3,
+          "plate_height_m": 0.056,
+          "plate_width_m": 0.135,
+          "radius_m": 0.25
+        },
+        "target": {
+          "omega_rad_s": 2.0,
+          "theta_rad": 0.0,
+          "vx_m_s": 0.1,
+          "vy_m_s": 0.15,
+          "x_m": 5.0,
+          "y_m": -1.5
+        }
+      },
+      "final_simulation_time_s": 22.02,
+      "hit_rate_resolved": 1.0,
+      "pending_shots": 0,
+      "resolved_shots": 80,
+      "scenario": "moving",
+      "shots_per_simulation_second": 4.0,
+      "stats": {
+        "hits": 80,
+        "invalid_commands": 0,
+        "misses": 0,
+        "shots": 80
+      }
+    }
+  ]
+}

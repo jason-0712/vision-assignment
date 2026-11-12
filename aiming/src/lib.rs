@@ -30,24 +30,177 @@ use serde::{Deserialize, Serialize};
 use std::f64::consts::TAU;
 use ui::{Color, Gizmos};
 
-/// Implement latency compensation, plate selection, and future-position aiming.
+// 收敛以秒计；朝向阈值限制擦边入射，取舍是少量射速换取更稳定的正面命中。
+const INTERCEPT_TIME_TOLERANCE_S: f64 = 1e-8;
+const MAX_INTERCEPT_ITERATIONS: usize = 32;
+const MIN_FRONT_COSINE: f64 = 0.5;
+const MIN_INCIDENCE_COSINE: f64 = 0.5;
+
+/// Compensate observation/launch latency, lead one plate, and fire on its front face.
 pub fn aim(input: &Input, debug: &mut Gizmos) -> Option<Command> {
-    let resolved = input.stats.hits + input.stats.misses;
+    let resolved = input.stats.hits.saturating_add(input.stats.misses);
     debug.overlay("Hit rate", format!("{}/{resolved}", input.stats.hits));
 
-    let observation = input.observation?;
+    let Some(observation) = input.observation else {
+        debug.overlay("Status", "Waiting for observation");
+        return None;
+    };
+    let age_s = input.now_s - observation.time_s;
+    let target = observation.target;
+    if !input.now_s.is_finite()
+        || !observation.time_s.is_finite()
+        || input.now_s < 0.0
+        || observation.time_s < 0.0
+        || !age_s.is_finite()
+        || age_s < 0.0
+        || ![
+            target.x_m,
+            target.y_m,
+            target.theta_rad,
+            target.vx_m_s,
+            target.vy_m_s,
+            target.omega_rad_s,
+            input.size.mount_pitch_rad,
+            input.size.radius_m,
+            input.size.plate_width_m,
+            input.size.plate_height_m,
+            input.size.plate_center_z_m,
+        ]
+        .into_iter()
+        .all(f64::is_finite)
+        || input.size.radius_m <= 0.0
+        || input.size.plate_width_m <= 0.0
+        || input.size.plate_height_m <= 0.0
+    {
+        debug.overlay("Status", "Invalid observation or geometry");
+        return None;
+    }
     for plate in observation.target.plates(input.size) {
         debug.plate(plate, input.size, Color::Cyan);
     }
 
-    // 1. Find the observation age and account for launch latency.
-    // 2. Select an armor plate before solving its trajectory.
-    // 3. Solve a trajectory with Trajectory::solve.
-    // 4. Aim at the future plate position using age, launch delay, and flight time.
-    // Optional drawings for your solution:
-    // debug.plate(predicted_plate, input.size, Color::Green);
-    // debug.trajectory(trajectory, Color::Orange);
+    // 先粗估命中时刻并选板，随后整个不动点迭代固定这个索引。
+    let delay_s = age_s + physics::LAUNCH_DELAY_S;
+    let launch_target = target.at(delay_s);
+    let initial_flight_s = norm(subtract(
+        [
+            launch_target.x_m,
+            launch_target.y_m,
+            input.size.plate_center_z_m,
+        ],
+        physics::MUZZLE_M,
+    )) / physics::MUZZLE_SPEED_M_S;
+    if !initial_flight_s.is_finite() || initial_flight_s <= 0.0 {
+        return None;
+    }
+    let approximate_plates = target.at(delay_s + initial_flight_s).plates(input.size);
+    let mut chosen = None;
+    let mut best_score = f64::NEG_INFINITY;
+    for (index, plate) in approximate_plates.into_iter().enumerate() {
+        let score = front_cosine(plate);
+        if score.is_finite() && score > best_score {
+            chosen = Some(index);
+            best_score = score;
+        }
+    }
+    let index = chosen?;
+    let Some(intercept) = solve_intercept(target, input.size, delay_s, index, initial_flight_s)
+    else {
+        debug.overlay("Status", "Unreachable or intercept did not converge");
+        return None;
+    };
+    let trajectory = intercept.trajectory;
+    let relative_velocity = subtract(
+        trajectory.velocity(trajectory.flight_time_s),
+        intercept.plate.velocity_m_s,
+    );
+    let incidence =
+        -dot(intercept.plate.outward_normal, relative_velocity) / norm(relative_velocity);
+    let front = front_cosine(intercept.plate);
+    let fire =
+        front >= MIN_FRONT_COSINE && incidence.is_finite() && incidence >= MIN_INCIDENCE_COSINE;
+
+    debug.plate(intercept.plate, input.size, Color::Green);
+    debug.trajectory(trajectory, Color::Orange);
+    debug.point(
+        "Impact",
+        trajectory.position(trajectory.flight_time_s),
+        Color::Purple,
+    );
+    debug.overlay(
+        "Status",
+        if fire {
+            "Fire"
+        } else {
+            "Tracking: oblique face"
+        },
+    );
+    debug.overlay("Plate", index);
+    debug.overlay(
+        "Flight",
+        format!("{:.1} ms", trajectory.flight_time_s * 1000.0),
+    );
+    debug.overlay("Observation age", format!("{:.1} ms", age_s * 1000.0));
+    debug.overlay("Iterations", intercept.iterations);
+    debug.overlay("Incidence cosine", format!("{incidence:.3}"));
+    Some(Command {
+        yaw_rad: trajectory.yaw_rad,
+        pitch_rad: trajectory.pitch_rad,
+        fire,
+    })
+}
+
+#[derive(Debug)]
+struct Intercept {
+    trajectory: Trajectory,
+    plate: Plate,
+    iterations: usize,
+}
+
+fn solve_intercept(
+    target: Target,
+    size: Size,
+    delay_s: f64,
+    index: usize,
+    mut flight_s: f64,
+) -> Option<Intercept> {
+    for iteration in 1..=MAX_INTERCEPT_ITERATIONS {
+        let plate = target.at(delay_s + flight_s).plates(size)[index];
+        let trajectory = Trajectory::solve(plate.center_m)?;
+        let difference_s = (trajectory.flight_time_s - flight_s).abs();
+        flight_s = trajectory.flight_time_s;
+        if difference_s <= INTERCEPT_TIME_TOLERANCE_S {
+            // 用最终飞行时间重新预测；防止把上一次迭代的板姿态用于入射检查。
+            let plate = target.at(delay_s + flight_s).plates(size)[index];
+            let residual_m = norm(subtract(trajectory.position(flight_s), plate.center_m));
+            if !residual_m.is_finite() || residual_m > 1e-5 {
+                return None;
+            }
+            return Some(Intercept {
+                trajectory,
+                plate,
+                iterations: iteration,
+            });
+        }
+    }
     None
+}
+
+fn subtract(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    std::array::from_fn(|axis| a[axis] - b[axis])
+}
+
+fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a.into_iter().zip(b).map(|(x, y)| x * y).sum()
+}
+
+fn norm(vector: [f64; 3]) -> f64 {
+    dot(vector, vector).sqrt()
+}
+
+fn front_cosine(plate: Plate) -> f64 {
+    let toward_muzzle = subtract(physics::MUZZLE_M, plate.center_m);
+    dot(plate.outward_normal, toward_muzzle) / norm(toward_muzzle)
 }
 
 /// The only simulation data provided to the applicant's controller.

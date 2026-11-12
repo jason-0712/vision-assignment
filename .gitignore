@@ -5,6 +5,7 @@ __pycache__/
 .env
 .env.*
 *.partial
+aiming/target/
 detection/outputs/*
 !detection/outputs/small.jsonl
 !detection/outputs/large.jsonl
